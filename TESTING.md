@@ -16,11 +16,12 @@ Tested on macOS 15.7.3, Apple Clang 15, arm64. This records actual coverage rath
 - Native DNS resolution and PF's non-mutating parser accept the actual generated localhost IPv4/IPv6 rules. This does not test network enforcement.
 - CLI validation, immediate operations, simulation state, and generated plist syntax with spaces and XML-special characters in paths.
 - launchd RunAtLoad callbacks registered and exited successfully without prematurely blocking a future resource.
-- Real user-session launchd jobs explicitly kickstarted at block/unblock deadlines changed simulated resource state correctly after the submitting process exited. Both jobs exited with status 0; duplicate and stale callbacks behaved correctly; all temporary jobs were removed. This isolates dispatch from the failed automatic calendar trigger.
+- Real user-session launchd jobs explicitly kickstarted at block/unblock deadlines changed simulated resource state correctly after the submitting process exited. Both jobs exited with status 0; duplicate and stale callbacks behaved correctly; all temporary jobs were removed. This isolated dispatch from the earlier failed automatic calendar trigger.
+- After the user rebooted on October 17, real automatic calendar dispatch passed: block at 01:06 EDT and unblock at 01:09 EDT. UserEventAgent PID 578 registered both intended Eastern times; both jobs exited 0, stale callbacks were ignored, and all temporary jobs were removed. No manual kickstart was used for this run.
 
-## Failed or incomplete
+## Remaining gaps and earlier failure
 
-**Full calendar dispatch failed.** For a generated October 16, 2026, 22:24 local-calendar job, `launchctl print` showed Month=10, Day=16, Hour=22, Minute=24. The system log from UserEventAgent said it registered the callback for October 17 at 01:24 Eastern. The host's current timezone was America/New_York. Earlier deadlines showed the same three-hour discrepancy. This is evidence of a timezone disagreement, not proof of its underlying cause. No system timezone, Apple service, or hard-coded offset was changed to make the test pass.
+**Earlier failure, cleared after reboot:** Full calendar dispatch initially failed. For a generated October 16, 2026, 22:24 local-calendar job, `launchctl print` showed Month=10, Day=16, Hour=22, Minute=24. The system log from UserEventAgent said it registered the callback for October 17 at 01:24 Eastern. The host's current timezone was America/New_York. Earlier deadlines showed the same three-hour discrepancy. This is evidence of a timezone disagreement, not proof of its underlying cause. No system timezone, Apple service, or hard-coded offset was changed to make the test pass.
 
 Root-owned/immutable bundle protection, privileged termination, system-domain launchd job registration, and PF packet/state behavior are **not verified**: `sudo -n true` reported that a password is required. No global firewall or installed application was modified. Browser, VPN, DNS-change, sleep/reboot, and updater coverage also remain outstanding.
 
@@ -37,9 +38,9 @@ The user-session dispatch test uses simulated effects. It cannot establish syste
 
 Fresh libc and Foundation probes both reported America/New_York, with no TZ override in the original test process. The user-session UserEventAgent had been running since September 6. Posting the documented `com.apple.system.timezone` notification did not fix its three-hour registration discrepancy. Restart via `launchctl kickstart -k` was refused by System Integrity Protection; no protected service was restarted. The disposable jobs were removed.
 
-A stale timezone/calendar object in that long-running agent remains the leading explanation, not a proven internal diagnosis. Apple documents that [NSTimeZone system values are cached](https://developer.apple.com/documentation/foundation/nstimezone/system) until reset; changing our own process cannot reset an object inside another process. StartCalendarInterval has no documented per-job timezone field. A fresh login refreshes the user session; rebooting also refreshes the system event agent used by LaunchDaemons. Rerun the real calendar test after that refresh before marking this resolved.
+A stale timezone/calendar object in that long-running agent remains the leading explanation, not a proven internal diagnosis. Apple documents that [NSTimeZone system values are cached](https://developer.apple.com/documentation/foundation/nstimezone/system) until reset; changing our own process cannot reset an object inside another process. StartCalendarInterval has no documented per-job timezone field. A fresh login refreshes the user session; rebooting also refreshes the system event agent used by LaunchDaemons. After the user rebooted at 01:02:45 EDT on October 17, the same calendar test passed at 01:06/01:09 EDT. This supports stale process timezone state as the earlier cause, without proving the exact internal caching mechanism.
 
-The environment-override fix does not establish that the original host discrepancy is fixed. The unresolved calendar discrepancy remains a release blocker for scheduled execution on this host.
+The immediate host discrepancy is no longer reproducible after reboot. Propagation of subsequent timezone changes without restarting the agent remains unverified and still needs a product-level solution/test; a reboot is not that solution. The passing run used real user-session launchd triggers with simulated resource effects, not system-domain privileged enforcement.
 
 ## Reproduce
 
@@ -50,7 +51,7 @@ ctest --test-dir build --output-on-failure
 python3 tests/integration.py build/blockerctl
 ```
 
-The calendar integration test installs uniquely named temporary LaunchAgents with simulation payloads, then removes them in a finally block. It takes several minutes and is expected to expose the calendar discrepancy on the affected host:
+The calendar integration test installs uniquely named temporary LaunchAgents with simulation payloads, then removes them in a finally block. It takes several minutes. The latest post-reboot run passed; the earlier pre-reboot failure is recorded above:
 
 ```sh
 python3 tests/integration.py build/blockerctl --launchd
