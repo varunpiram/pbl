@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -180,7 +181,7 @@ void Executor::addResource(ResourceDefinition definition) {
     require(definition.type == "app" || definition.type == "website", "Unknown resource type");
     require(!schedule.resources.contains(definition.id), "Resource ID already exists");
     for (const auto& [id, r] : schedule.resources)
-        require(!(r.type == definition.type && r.target == definition.target && r.user == definition.user),
+        require(!(r.type == definition.type && (r.target == definition.target || (r.type == "app" && r.inode != 0 && r.inode == definition.inode && r.device == definition.device))),
                 "Resource already exists as " + id + "; reuse that ID across sets");
     schedule.resources.emplace(definition.id, definition); commit(schedule);
 }
@@ -197,6 +198,7 @@ std::uint64_t Executor::submit(const std::string& set, const Action& action, Exe
     Timestamp time = std::holds_alternative<ExecuteAt>(policy) ? std::get<ExecuteAt>(policy).timestamp : clock_();
     require(time >= 0, "Invalid execution time");
     require(time <= clock_() || time % 60 == 0, "Future scheduled actions must use whole minutes");
+    require(schedule.nextRequest < std::numeric_limits<std::uint64_t>::max(), "Request ID space exhausted");
     auto id = schedule.nextRequest++; schedule.requests.push_back({id, set, action.blocks(), time});
     commit(schedule); return id;
 }

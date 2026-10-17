@@ -12,3 +12,7 @@ enable_testing()
 add_executable(blocker_tests tests/tests.cpp)
 target_link_libraries(blocker_tests PRIVATE blocker)
 add_test(NAME backend COMMAND blocker_tests)
+# Privileged fixture test is opt-in and intentionally absent from ctest.
+add_executable(privileged_app_test tests/privileged_app.cpp)
+target_link_libraries(privileged_app_test PRIVATE blocker)
+set_tests_properties(backend PROPERTIES TIMEOUT 60)

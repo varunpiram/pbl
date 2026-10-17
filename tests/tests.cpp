@@ -2,6 +2,9 @@
 #include <algorithm>
 #include <cerrno>
 #include <fstream>
+#include <csignal>
+#include <limits>
+#include <membership.h>
 #include <iostream>
 #include <random>
 #include <set>
@@ -201,6 +204,92 @@ void disposableAppACL() {
         throw;
     }
 }
+void crashAfterSave() {
+    Fixture f; int signalPipe[2]; check(pipe(signalPipe) == 0, "pipe");
+    auto pid = fork(); require(pid >= 0, "fork");
+    if (pid == 0) {
+        close(signalPipe[0]);
+        struct CrashEnvironment : FakeEnvironment {
+            int signal;
+            explicit CrashEnvironment(int fd) : signal(fd) {}
+            void synchronizeJobs(const std::vector<Operation>&, Timestamp) override {
+                char ready = 'x'; write(signal, &ready, 1);
+                for (;;) pause();
+            }
+        } env(signalPipe[1]);
+        Executor executor(f.temp.path, env, true, [] { return 60; });
+        executor.submit("A", Block{}); _exit(1);
+    }
+    close(signalPipe[1]); char ready;
+    check(read(signalPipe[0], &ready, 1) == 1, "child reached post-save boundary"); close(signalPipe[0]);
+    kill(pid, SIGKILL); int status; waitpid(pid, &status, 0);
+    check(WIFSIGNALED(status), "actual killed updater");
+    f.now = 60; f.executor.recover();
+    check(f.executor.inspect().requests.size() == 1 && f.env.blocked["spotify"], "recover killed writer and released lock");
+}
+void interruptedAtomicWrite() {
+    Temp temp; auto path = temp.path / "schedule.txt";
+    const std::string old = "old complete schedule", replacement(4*1024*1024, 'x'); atomicWrite(path, old);
+    auto pid = fork(); require(pid >= 0, "fork");
+    if (pid == 0) { for (;;) atomicWrite(path, replacement); }
+    for (int i = 0; i < 1000; ++i) {
+        if (std::distance(fs::directory_iterator(temp.path), fs::directory_iterator{}) > 1) break;
+        usleep(1000);
+    }
+    kill(pid, SIGKILL); int status; waitpid(pid, &status, 0);
+    auto saved = readText(path); check(saved == old || saved == replacement, "killed write exposes complete old/new file only");
+}
+void execAndExistingACL() {
+    Temp temp; auto app = temp.path / "Probe.app";
+    fs::create_directories(app / "Contents/Helpers");
+    auto program = app / "Contents/probe";
+    std::ofstream(program) << "#!/bin/sh\nexit 0\n"; chmod(program.c_str(), 0755);
+    auto helper = app / "Contents/Helpers/helper"; fs::copy_file(program, helper);
+    auto separate = temp.path / "separate"; fs::copy_file(program, separate);
+    uuid_t uuid; check(mbr_uid_to_uuid(getuid(), uuid) == 0, "UUID");
+    auto acl = acl_init(1); acl_entry_t entry; acl_permset_t perms;
+    check(acl_create_entry(&acl, &entry) == 0 && acl_set_tag_type(entry, ACL_EXTENDED_ALLOW) == 0 &&
+          acl_set_qualifier(entry, uuid) == 0 && acl_get_permset(entry, &perms) == 0 &&
+          acl_add_perm(perms, ACL_READ_DATA) == 0 && acl_set_file(app.c_str(), ACL_TYPE_EXTENDED, acl) == 0, "fixture ACL");
+    acl_free(acl); auto original = aclText(app); struct stat st{}; stat(app.c_str(), &st);
+    ResourceDefinition definition{"probe", "app", app.string(), getuid(), std::uint64_t(st.st_dev), st.st_ino};
+    MacOSApp resource(definition, temp.path, false);
+    auto execute = [](const fs::path& path) {
+        auto pid = fork(); require(pid >= 0, "fork");
+        if (pid == 0) { execl(path.c_str(), path.c_str(), nullptr); _exit(errno == EACCES ? 77 : 78); }
+        int status; waitpid(pid, &status, 0); return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    };
+    try {
+        check(execute(program) == 0 && execute(helper) == 0, "actual initial exec");
+        auto pid = fork(); require(pid >= 0, "fork");
+        if (pid == 0) { try { resource.block(); _exit(0); } catch (...) { _exit(1); } }
+        int status; waitpid(pid, &status, 0); check(WIFEXITED(status) && WEXITSTATUS(status) == 0, "child installed ACL then exited");
+        check(execute(program) == 77 && execute(helper) == 77, "actual exec and embedded helper denied after process exits");
+        check(execute(separate) == 0, "separate installation unaffected");
+        resource.unblock();
+        check(execute(program) == 0 && aclText(app) == original, "preexisting ACL restored by separate process");
+    } catch (...) { try { resource.unblock(); } catch (...) {} throw; }
+}
+void resourceAliasesAndCounter() {
+    Fixture f;
+    rejects([&] { f.executor.addResource({"duplicate", "app", "/fake/Spotify.app", 501}); });
+    auto text = readText(f.temp.path / "schedule.txt");
+    auto end = text.find('\n'); text.replace(0, end, "BLOCKER 1 1 18446744073709551615");
+    atomicWrite(f.temp.path / "schedule.txt", text);
+    rejects([&] { f.executor.submit("A", Block{}); });
+    check(readText(f.temp.path / "schedule.txt") == text, "request counter overflow cannot corrupt saved intent");
+}
+void websiteRuleSyntax() {
+    Temp temp;
+    auto rules = resolveWebsiteRules("localhost");
+    check(!rules.addresses.empty() && rules.text.find("block drop out quick") != std::string::npos, "real resolver emits PF rules");
+    auto path = temp.path / "rules.pf"; atomicWrite(path, rules.text);
+    auto pid = fork(); require(pid >= 0, "fork");
+    if (pid == 0) { execl("/sbin/pfctl", "pfctl", "-n", "-f", path.c_str(), nullptr); _exit(1); }
+    int status; waitpid(pid, &status, 0);
+    check(WIFEXITED(status) && WEXITSTATUS(status) == 0, "native PF parser accepts actual generated rules without loading them");
+    rejects([&] { resolveWebsiteRules("invalid..hostname"); });
+}
 void generatedJobs() {
     Temp temp;
     MacOSEnvironment environment(temp.path, "/usr/bin/true", true);
@@ -219,7 +308,9 @@ int main() {
         {"interrupted updates", interruptedUpdate}, {"persistence and validation", persistentStateAndValidation},
         {"set edits", setEditsAndRemovedIntervals}, {"randomized overlap oracle", resolverAgainstOracle},
         {"concurrent submissions", concurrentSubmissions}, {"lock release on exit", lockReleasedOnExit},
-        {"disposable app ACL", disposableAppACL}, {"launchd job rendering", generatedJobs}
+        {"disposable app ACL", disposableAppACL}, {"launchd job rendering", generatedJobs},
+        {"killed updater recovery", crashAfterSave}, {"interrupted atomic write", interruptedAtomicWrite},
+        {"actual exec and preexisting ACL", execAndExistingACL}, {"resource aliases and counter overflow", resourceAliasesAndCounter}, {"PF DNS and rule syntax", websiteRuleSyntax}
     };
     for (const auto& [name, test] : tests) {
         try { test(); std::cout << "PASS " << name << '\n'; }

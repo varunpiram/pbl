@@ -170,15 +170,9 @@ void MacOSApp::unblock() {
 }
 MacOSWebsite::MacOSWebsite(ResourceDefinition definition, fs::path state)
     : definition_(std::move(definition)), state_(std::move(state)) {}
-void MacOSWebsite::block() {
-    auto status = run({"/sbin/pfctl", "-s", "info"});
-    require(status.status == 0 && status.output.find("Status: Enabled") != std::string::npos,
-            "PF must already be enabled; see README setup");
-    auto rules = run({"/sbin/pfctl", "-s", "rules"});
-    require(rules.status == 0 && rules.output.find("anchor \"productivity-blocker/*\"") != std::string::npos,
-            "Required PF anchor is not installed; see README setup");
+WebsiteRules resolveWebsiteRules(const std::string& hostname) {
     addrinfo hints{}, *addresses = nullptr; hints.ai_family = AF_UNSPEC; hints.ai_socktype = SOCK_STREAM;
-    int error = getaddrinfo(definition_.target.c_str(), nullptr, &hints, &addresses);
+    int error = getaddrinfo(hostname.c_str(), nullptr, &hints, &addresses);
     require(error == 0, std::string("DNS resolution failed: ") + gai_strerror(error));
     std::set<std::pair<int, std::string>> unique;
     for (auto* a = addresses; a; a = a->ai_next) {
@@ -191,9 +185,19 @@ void MacOSWebsite::block() {
     std::ostringstream text;
     for (const auto& [family, address] : unique)
         text << "block drop out quick " << (family == AF_INET ? "inet" : "inet6") << " to " << address << '\n';
-    auto file = state_ / (definition_.id + ".pf"); atomicWrite(file, text.str());
+    return {text.str(), {unique.begin(), unique.end()}};
+}
+void MacOSWebsite::block() {
+    auto status = run({"/sbin/pfctl", "-s", "info"});
+    require(status.status == 0 && status.output.find("Status: Enabled") != std::string::npos,
+            "PF must already be enabled; see README setup");
+    auto rules = run({"/sbin/pfctl", "-s", "rules"});
+    require(rules.status == 0 && rules.output.find("anchor \"productivity-blocker/*\"") != std::string::npos,
+            "Required PF anchor is not installed; see README setup");
+    auto ruleset = resolveWebsiteRules(definition_.target);
+    auto file = state_ / (definition_.id + ".pf"); atomicWrite(file, ruleset.text);
     checked({"/sbin/pfctl", "-a", "productivity-blocker/" + definition_.id, "-f", file.string()});
-    for (const auto& [family, address] : unique)
+    for (const auto& [family, address] : ruleset.addresses)
         checked({"/sbin/pfctl", "-k", family == AF_INET ? "0.0.0.0/0" : "::/0", "-k", address});
 }
 void MacOSWebsite::unblock() {

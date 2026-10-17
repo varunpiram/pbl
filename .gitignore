@@ -2,3 +2,4 @@ build*/
 .DS_Store
 *.tmp
 simulation-state/
+__pycache__/

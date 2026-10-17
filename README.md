@@ -2,7 +2,7 @@
 
 First-pass macOS C++ backend for application and website block sets. No UI, database, XPC service, or resident monitoring loop. Submit `Block` or `Unblock` for a set, immediately or at a UTC time. The executor merges overlapping resource intervals before changing launchd jobs.
 
-**Prototype status:** core scheduling, simulated execution, and a disposable bundle ACL test are covered. Root ownership/immutable protection, real system launchd dispatch, PF enforcement, app termination, and installer behavior have not been end-to-end tested. Do not treat this as a release-ready blocker.
+**Prototype status:** expanded automated tests pass, including real executable ACL denial and recovery after process kills. Real user-session launchd calendar testing failed on the test Mac: the calendar-event agent registered deadlines three hours later than the backend requested. Scheduled blocking is not ready for reliance. Root protection, system-domain launchd registration, PF traffic enforcement, and privileged process termination still require administrator integration tests. See [TESTING.md](TESTING.md) for the precise results and commands.
 
 ## Build and test
 
@@ -31,7 +31,7 @@ Simulation writes only inside the specified directory. It generates inspectable 
 ./build/blockerctl --simulate --state /tmp/blocker-demo unblock focus
 ```
 
-Each submitted action prints a request ID. `cancel` removes that original request. App registration is `app ID /absolute/path/App.app UID`; reuse a resource ID across sets. `set ID RESOURCE_ID...` explicitly replaces membership and recalculates all requests for that set. Empty membership is allowed. `status` runs the recovery hook first; `recover` runs it explicitly. Mutations resolve and recover the final edited schedule rather than briefly applying the previous state first.
+Each submitted action prints a request ID. `cancel` removes that original request. App registration is `app ID /absolute/path/App.app UID`; reuse a resource ID across sets. Registering the same installation again under another user is rejected to prevent conflicting restoration records. `set ID RESOURCE_ID...` explicitly replaces membership and recalculates all requests for that set. Empty membership is allowed. `status` runs the recovery hook first; `recover` runs it explicitly. Mutations resolve and recover the final edited schedule rather than briefly applying the previous state first.
 
 The internal `execute OPERATION_ID` command checks the latest due generated operation for that resource under the same lock. It does **not** run the set overlap resolver. The CLI/submission process does not need to stay alive.
 
@@ -91,7 +91,7 @@ Address blocking has shared-host collateral effects, covers only the exact resol
 
 Jobs run the installed executable with `execute OPERATION_ID`; each job has a calendar trigger and `RunAtLoad`. They are generated under `/Library/LaunchDaemons` in live mode and under `state/jobs` in simulation. Job registration/removal uses `launchctl bootstrap`, `print`, and `bootout` without a shell. The backend never waits for a scheduled backend process while holding the lock.
 
-Before touching a resource, the invocation verifies that its operation is still the latest due operation in the saved schedule. Early, obsolete, cancelled, and superseded callbacks do nothing. A repeated current operation safely reapplies the requested state. Calendar jobs have no year field; the saved absolute timestamp supplies that check. Completed jobs are cleaned up on the next interaction, not from their own process. Time-zone changes require recovery to regenerate calendar fields; DST fallback/ambiguous calendar times need dedicated integration testing.
+Before touching a resource, the invocation verifies that its operation is still the latest due operation in the saved schedule. Early, obsolete, cancelled, and superseded callbacks do nothing. A repeated current operation safely reapplies the requested state. Calendar jobs have no year field; the saved absolute timestamp supplies that check. Completed jobs are cleaned up on the next interaction, not from their own process. Time-zone changes require recovery to regenerate calendar fields; this does not guarantee the system calendar-event agent uses the same timezone. Testing observed a three-hour discrepancy between generated fields and the agent's registered date. This remains unresolved; DST fallback/ambiguous calendar times also need dedicated integration testing.
 
 Boot/load callbacks for still-installed jobs can repair their own current effects. This is not automatic full reboot recovery; `status`/`recover` reapplies all resources and PF after missed work. This matches the accepted recovery-on-next-interaction tradeoff.
 
