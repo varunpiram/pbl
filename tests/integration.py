@@ -41,6 +41,20 @@ with tempfile.TemporaryDirectory(prefix='blocker-integration-') as directory:
         run(base + arguments, success=False)
         assert (state / 'schedule.txt').read_bytes() == before, arguments
     print('PASS CLI rejects invalid requests without modifying schedule', flush=True)
+    # Identical instants must render the same calendar fields regardless of caller TZ.
+    snapshots = []
+    for zone in ['UTC', 'America/Los_Angeles', 'Asia/Kolkata']:
+        zone_state = root / zone.replace('/', '_')
+        zone_base = [str(binary), '--simulate', '--state', str(zone_state)]
+        environment = dict(os.environ, TZ=zone)
+        for command in [['website', 'site', 'example.com'], ['set', 'focus', 'site'],
+                        ['block', 'focus', '2030-01-01T00:00Z']]:
+            subprocess.run(zone_base + command, env=environment, check=True, capture_output=True, text=True)
+        job = next((zone_state / 'jobs').glob('*.plist'))
+        snapshots.append(plistlib.loads(job.read_bytes())['StartCalendarInterval'])
+    assert snapshots[0] == snapshots[1] == snapshots[2], snapshots
+    print('PASS caller TZ overrides cannot change launchd calendar fields', flush=True)
+
     if not (args.launchd or args.dispatch_only):
         run(base + ['block', 'focus'])
         assert (state / f'{resource}.blocked').exists()

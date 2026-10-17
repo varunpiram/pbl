@@ -57,7 +57,7 @@ The recovery hook reloads intent, resolves operations, saves, synchronizes jobs,
 
 Schedule semantics in this first pass:
 
-- UTC absolute timestamps; future schedules use whole minutes.
+- UTC absolute timestamps; future schedules use whole minutes. The CLI ignores a caller-provided TZ override when converting those instants to the machine-local calendar fields expected by launchd.
 - Requests are ordered by timestamp then request ID. At an identical timestamp, the last request for the same set wins.
 - Repeated Block/Unblock for an already matching set state is redundant.
 - Intervals that touch are merged, so shared resources do not briefly toggle.

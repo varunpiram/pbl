@@ -31,7 +31,15 @@ The user-session dispatch test uses simulated effects. It cannot establish syste
 1. The same app could be registered under different user IDs, allowing separate restoration journals to conflict. Duplicate targets/known filesystem identities are now rejected regardless of user ID.
 2. Exhausting the request ID counter could wrap it and save a schedule that could no longer be loaded. Submission now fails before modifying the saved schedule.
 
-The unresolved calendar discrepancy is a release blocker for scheduled execution on this host.
+3. A caller-provided `TZ` changed the CLI's generated calendar fields, although launchd interprets them in the machine timezone. The CLI now unsets that override and initializes libc timezone conversion. A regression test fails on the original binary and passes on the corrected binary under UTC, America/Los_Angeles, and Asia/Kolkata.
+
+### Timezone investigation
+
+Fresh libc and Foundation probes both reported America/New_York, with no TZ override in the original test process. The user-session UserEventAgent had been running since September 6. Posting the documented `com.apple.system.timezone` notification did not fix its three-hour registration discrepancy. Restart via `launchctl kickstart -k` was refused by System Integrity Protection; no protected service was restarted. The disposable jobs were removed.
+
+A stale timezone/calendar object in that long-running agent remains the leading explanation, not a proven internal diagnosis. Apple documents that [NSTimeZone system values are cached](https://developer.apple.com/documentation/foundation/nstimezone/system) until reset; changing our own process cannot reset an object inside another process. StartCalendarInterval has no documented per-job timezone field. A fresh login refreshes the user session; rebooting also refreshes the system event agent used by LaunchDaemons. Rerun the real calendar test after that refresh before marking this resolved.
+
+The environment-override fix does not establish that the original host discrepancy is fixed. The unresolved calendar discrepancy remains a release blocker for scheduled execution on this host.
 
 ## Reproduce
 

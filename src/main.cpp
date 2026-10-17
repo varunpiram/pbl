@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <charconv>
 #include <ctime>
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -52,6 +53,9 @@ void show(const Schedule& schedule) {
 }
 int main(int argc, char** argv) {
     try {
+        // launchd calendar fields use the machine timezone, not a caller's TZ override.
+        require(unsetenv("TZ") == 0, "Cannot select system timezone");
+        tzset();
         umask(0077);
         bool simulation = false; fs::path state; int i = 1;
         while (i < argc && std::string(argv[i]).starts_with("--")) {
