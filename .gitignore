@@ -1,5 +1,6 @@
 build*/
+dist/
 .DS_Store
 *.tmp
-simulation-state/
 __pycache__/
+assets/AppIcon.iconset/
