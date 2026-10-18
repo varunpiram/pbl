@@ -8,7 +8,7 @@ Built with SwiftUI and C++, with light, dark, and system appearance.
 
 Requires Apple Silicon and macOS 14 or later.
 
-Download and open `pbl-macos-arm64.pkg`, follow the macOS Installer prompts, then open Pbl from Applications. Quit the app before updating. Existing sets and schedules are retained.
+Download and open [pbl-macos-arm64.pkg](https://github.com/varunpiram/pbl/releases/latest/download/pbl-macos-arm64.pkg), follow the macOS Installer prompts, then open Pbl from Applications. Quit the app before updating. Existing sets and schedules are retained.
 
 The installer is unsigned and the app is ad-hoc signed, not notarized. macOS may require approval in System Settings > Privacy & Security.
 
@@ -18,11 +18,7 @@ The installer is unsigned and the app is ad-hoc signed, not notarized. macOS may
 - **Quick Block:** choose a set and a duration, then start the block.
 - **Schedule:** choose weekdays and time ranges that repeat each week.
 
-Active sets cannot be edited or deleted. Blocks continue when the app is closed. Appearance follows the system or your choice of light or dark mode.
-
-Timezone changes may take effect later while the app is closed. Blocks ending during the repeated daylight-saving hour may finish late.
-
-App blocks cover the selected installation. Website blocks use resolved IP addresses; shared addresses can affect other sites, and addresses are not continuously refreshed.
+Blocking continues while the app is closed and across restarts.
 
 ## Build
 
@@ -48,13 +44,4 @@ To run tests:
 ```sh
 cmake --build build
 ctest --test-dir build --output-on-failure
-```
-
-## Formatting
-
-Use clang-format 22 and SwiftFormat 0.61.1 with the repository's checked-in settings:
-
-```sh
-bash scripts/format.sh
-bash scripts/format.sh --check
 ```
