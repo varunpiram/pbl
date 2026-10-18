@@ -20,7 +20,7 @@ The installer is unsigned and the app is ad-hoc signed, not notarized. macOS may
 
 Active sets cannot be edited or deleted. Blocks continue when the app is closed. Appearance follows the system or your choice of light or dark mode.
 
-Weekly schedules follow the system timezone. Active blocks retain their absolute deadlines. Schedules renew daily, at boot, and when the app becomes active or receives a timezone-change notification. With the app closed, timezone changes may take effect at the next renewal. Deadlines in the repeated daylight-saving hour may run late.
+Timezone changes may take effect later while the app is closed. Blocks ending during the repeated daylight-saving hour may finish late.
 
 App blocks cover the selected installation. Website blocks use resolved IP addresses; shared addresses can affect other sites, and addresses are not continuously refreshed.
 
@@ -41,7 +41,7 @@ bash scripts/prepare-local.sh
 sudo bash scripts/install-local.sh
 ```
 
-The app and helper authenticate using exact code-signature hashes. Install matching builds together after changes.
+Reinstall after rebuilding the app.
 
 To run tests:
 
@@ -50,24 +50,11 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-## Structure
+## Formatting
 
-- `ui/`: SwiftUI views and display state.
-- `bridge/`: authenticated XPC interface and privileged helper.
-- `include/`, `src/`: C++ resources, actions, scheduling, storage, and macOS effects.
-- `tests/`: recurrence and authentication checks.
-- `scripts/`: building, packaging, installation, and icon generation.
-- `assets/`: app icon and vector artwork.
-
-The backend stores schedules in `/Library/Application Support/ProductivityBlocker/schedule.txt`. A file lock serializes updates; atomic replacement saves requests and resolved operations together. Batch submission commits starts and ends together and resolves overlapping resources. Set activity and deadlines come from the same resolved plan.
-
-launchd invokes the worker for resolved actions and renews a fourteen-day horizon daily at 03:15 and at boot. Recovery reconciles saved state with OS effects. The UI retains user-visible names, ordering, selection, and appearance; the backend owns membership, schedules, and deadlines.
-
-App restoration records preserve original permissions, ACLs, ownership, and flags. Website blocks use PF `block return` rules and clear connection states for blocked addresses.
-
-To regenerate the icon:
+Use clang-format 22 and SwiftFormat 0.61.1 with the repository's checked-in settings:
 
 ```sh
-swift scripts/generate-icon.swift assets
-iconutil -c icns assets/AppIcon.iconset -o assets/AppIcon.icns
+bash scripts/format.sh
+bash scripts/format.sh --check
 ```

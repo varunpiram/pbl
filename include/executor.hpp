@@ -1,9 +1,11 @@
 #pragma once
 #include "schedule.hpp"
+
 namespace blocker {
 class MacOSEnvironment;
+
 class Executor {
-public:
+  public:
     Executor(fs::path state, MacOSEnvironment&);
     void saveSet(BlockSet, std::vector<ResourceDefinition>, std::vector<WeeklyWindow>);
     void removeSet(const std::string&);
@@ -11,7 +13,8 @@ public:
     void execute(const std::string& operation);
     void recover();
     Schedule inspect();
-private:
+
+  private:
     fs::path state_;
     MacOSEnvironment& environment_;
     Schedule load();

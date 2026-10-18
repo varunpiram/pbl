@@ -20,7 +20,10 @@ int main(int argc, char** argv) {
         const blocker::fs::path state = PBL_STATE;
         blocker::MacOSEnvironment environment(state, executable.c_str());
         blocker::Executor executor(state, environment);
-        if (renew) executor.recover(); else executor.execute(argv[2]);
+        if (renew)
+            executor.recover();
+        else
+            executor.execute(argv[2]);
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

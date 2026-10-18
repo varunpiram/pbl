@@ -4,13 +4,21 @@ import AppKit
 enum Pane: String, CaseIterable {
     case quick = "Quick Block", sets = "Sets", schedule = "Schedule"
     var symbol: String {
-        switch self { case .quick: return "timer"; case .sets: return "square.stack"; case .schedule: return "calendar" }
+        switch self { case .quick: return "timer"
+        case .sets: return "square.stack"
+        case .schedule: return "calendar" }
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
         for window in sender.windows where window.canBecomeMain {
             window.deminiaturize(nil)
             window.makeKeyAndOrderFront(nil)

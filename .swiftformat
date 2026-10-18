@@ -1,0 +1,8 @@
+--swift-version 5.10
+--indent 4
+--max-width 100
+--semicolons never
+--wrap-arguments before-first
+--wrap-parameters before-first
+--wrap-collections before-first
+--rules blankLineAfterImports,blankLinesAtEndOfScope,blankLinesAtStartOfScope,blankLinesBetweenScopes,braces,consecutiveBlankLines,consecutiveSpaces,elseOnSameLine,emptyBraces,indent,linebreakAtEndOfFile,linebreaks,semicolons,spaceAroundBraces,spaceAroundBrackets,spaceAroundGenerics,spaceAroundOperators,spaceAroundParens,spaceInsideBraces,spaceInsideBrackets,spaceInsideGenerics,spaceInsideParens,trailingSpace,wrap,wrapArguments,wrapConditionalBodies,wrapFunctionBodies,wrapLoopBodies,wrapMultilineFunctionChains,wrapMultilineStatementBraces,wrapPropertyBodies
