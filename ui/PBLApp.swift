@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = BlockerModel()
     var body: some Scene {
-        Window("Pbl", id: "main") {
+        Window("pbl", id: "main") {
             RootView(model: model)
                 .frame(minWidth: 920, minHeight: 660)
         }

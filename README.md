@@ -8,7 +8,7 @@ Built with SwiftUI and C++, with light, dark, and system appearance.
 
 Requires Apple Silicon and macOS 14 or later.
 
-Download and open [pbl-macos-arm64.pkg](https://github.com/varunpiram/pbl/releases/latest/download/pbl-macos-arm64.pkg), follow the macOS Installer prompts, then open Pbl from Applications. Quit the app before updating. Existing sets and schedules are retained.
+Download and open [pbl-macos-arm64.pkg](https://github.com/varunpiram/pbl/releases/latest/download/pbl-macos-arm64.pkg), follow the macOS Installer prompts, then open pbl from Applications. Quit the app before updating. Existing sets and schedules are retained.
 
 The installer is unsigned and the app is ad-hoc signed, not notarized. macOS may require approval in System Settings > Privacy & Security.
 
