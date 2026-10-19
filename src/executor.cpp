@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <limits>
+#include <thread>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -119,6 +120,9 @@ void Executor::submit(const std::vector<Submission>& submissions) {
 }
 
 void Executor::execute(const std::string& id) {
+    for (const auto& op : inspect().operations)
+        if (op.id() == id && op.time / 60 == currentTime() / 60)
+            std::this_thread::sleep_until(std::chrono::system_clock::from_time_t(op.time));
     FileLock lock(state_ / "schedule.lock");
     auto schedule = load();
     environment_.synchronizeWebsiteJobs(schedule, currentTime());

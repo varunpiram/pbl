@@ -179,8 +179,7 @@ Schedule applySubmissions(Schedule schedule, const std::vector<Submission>& subm
         auto time = std::holds_alternative<ExecuteAt>(r.policy)
                         ? std::get<ExecuteAt>(r.policy).timestamp
                         : now;
-        require(time >= now && (time == now || time % 60 == 0),
-                "Future actions must use whole minutes");
+        require(time >= now, "Actions must not be in the past");
         require(schedule.nextRequest < std::numeric_limits<std::uint64_t>::max(),
                 "Request ID space exhausted");
         schedule.requests.push_back({schedule.nextRequest++, r.set, r.block, time});

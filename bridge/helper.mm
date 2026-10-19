@@ -118,7 +118,7 @@ static NSData* snapshot(const Schedule& schedule) {
             int minutes = number(input[@"minutes"]);
             require(minutes >= 15 && minutes <= 720 && minutes % 15 == 0,
                     "Choose a duration from 15 minutes to 12 hours");
-            auto end = ((currentTime() + minutes * 60 + 59) / 60) * 60;
+            auto end = currentTime() + minutes * 60;
             executor.submit({{id, true, ExecuteImmediately{}}, {id, false, ExecuteAt{end}}});
         } else
             require(command == "read", "Unknown command");

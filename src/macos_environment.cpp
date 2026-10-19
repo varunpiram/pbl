@@ -113,7 +113,6 @@ void MacOSEnvironment::synchronizeJobs(const Schedule& schedule, Timestamp now) 
             std::tm date{};
             require(localtime_r(&timestamp, &date) != nullptr, "Invalid calendar timestamp");
 
-            require(date.tm_sec == 0, "Future scheduled operations must use whole minutes");
             std::string label = prefix + operation.id();
             std::ostringstream out;
             out << "<key>StartCalendarInterval</key><dict>";
