@@ -1,10 +1,19 @@
 import AppKit
 
 let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
-let iconset = output.appendingPathComponent("AppIcon.iconset", isDirectory: true)
+let updating = CommandLine.arguments.contains("--update")
+let name = updating ? "UpdateIcon" : "AppIcon"
+let iconset = output.appendingPathComponent(name + ".iconset", isDirectory: true)
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
-let background = NSColor(srgbRed: 245 / 255, green: 240 / 255, blue: 230 / 255, alpha: 1)
-let foreground = NSColor(srgbRed: 51 / 255, green: 48 / 255, blue: 43 / 255, alpha: 1)
+let cream = NSColor(srgbRed: 245 / 255, green: 240 / 255, blue: 230 / 255, alpha: 1)
+let background = updating ? NSColor(srgbRed: 174 / 255, green: 57 / 255, blue: 48 / 255, alpha: 1) :
+    cream
+let foreground = updating ? cream : NSColor(
+    srgbRed: 51 / 255,
+    green: 48 / 255,
+    blue: 43 / 255,
+    alpha: 1
+)
 for size in [16, 32, 128, 256, 512] {
     for scale in [1, 2] {
         let pixels = size * scale
@@ -46,7 +55,7 @@ for size in [16, 32, 128, 256, 512] {
         let suffix = scale == 2 ? "@2x" : ""
         try data.write(to: iconset.appendingPathComponent("icon_\(size)x\(size)\(suffix).png"))
         if pixels == 1024 {
-            try data.write(to: output.appendingPathComponent("AppIcon.png"))
+            try data.write(to: output.appendingPathComponent(name + ".png"))
         }
     }
 }
