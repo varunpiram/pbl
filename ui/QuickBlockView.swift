@@ -5,7 +5,8 @@ extension RootView {
         VStack(spacing: 24) {
             if let index {
                 let set = model.sets[index]
-                let active = set.activeInterval(at: now)
+                let active = set.activeInterval(at: now, quickOnly: true)
+                let locked = set.activeEnd(at: now) != nil
                 let end = active?.end
                 Picker("Set", selection: $selected) {
                     ForEach(model.sets) { Text($0.name).tag($0.id) }
@@ -94,7 +95,7 @@ extension RootView {
                             if model.busy {
                                 ProgressView().controlSize(.small)
                             }
-                            Text("Start block")
+                            Text(locked ? "Scheduled block active" : "Start block")
                         }
                         .font(.system(size: 13, weight: .medium))
                         .frame(width: 236)
@@ -104,7 +105,7 @@ extension RootView {
                         )
                     }
                     .buttonStyle(ActionButtonStyle())
-                    .disabled(set.resources.isEmpty || minutes <= 0)
+                    .disabled(locked || set.resources.isEmpty || minutes <= 0)
                 }
             } else {
                 emptyView("Your first block starts with a set", symbol: "square.stack")

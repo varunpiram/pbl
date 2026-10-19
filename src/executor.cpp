@@ -50,7 +50,7 @@ void Executor::commit(Schedule& schedule) {
     tzset();
     schedule.operations = resolveSchedule(schedule);
     saveSchedule(state_, schedule);
-    environment_.synchronizeJobs(schedule.operations, currentTime());
+    environment_.synchronizeJobs(schedule, currentTime());
     applyCurrent(schedule);
 }
 
@@ -73,7 +73,6 @@ void Executor::saveSet(BlockSet set, std::vector<ResourceDefinition> resources,
     FileLock lock(state_ / "schedule.lock");
     auto schedule = load();
     validateId(set.id);
-    requireEditable(schedule, set.id, currentTime());
     set.resources.clear();
     for (auto& resource : resources)
         set.resources.push_back(registerResource(schedule, std::move(resource)));
@@ -86,6 +85,7 @@ void Executor::saveSet(BlockSet set, std::vector<ResourceDefinition> resources,
                     w.end < 1440,
                 "Invalid weekly window");
     }
+    requireValidSetEdit(schedule, set, windows, currentTime());
     std::erase_if(schedule.weekly, [&](const WeeklyWindow& w) {
         return w.set == set.id;
     });
@@ -121,6 +121,7 @@ void Executor::submit(const std::vector<Submission>& submissions) {
 void Executor::execute(const std::string& id) {
     FileLock lock(state_ / "schedule.lock");
     auto schedule = load();
+    environment_.synchronizeWebsiteJobs(schedule, currentTime());
 
     for (const auto& [resourceId, op] : currentOperations(schedule, currentTime()))
         if (op.id() == id) {
@@ -137,6 +138,15 @@ void Executor::recover() {
     FileLock lock(state_ / "schedule.lock");
     auto schedule = load();
     commit(schedule);
+}
+
+void Executor::refreshWebsites() {
+    FileLock lock(state_ / "schedule.lock");
+    auto schedule = load();
+    std::erase_if(schedule.resources, [](const auto& entry) {
+        return entry.second.type != "website";
+    });
+    applyCurrent(schedule);
 }
 
 Schedule Executor::inspect() {

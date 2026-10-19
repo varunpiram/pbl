@@ -146,7 +146,7 @@ struct RootView: View {
         .sheet(item: $resourceKind) { kind in
             if kind == .app {
                 AppPicker { apps in
-                    guard let index, model.sets[index].activeEnd(at: Date()) == nil else {
+                    guard let index else {
                         return
                     }
                     model.edit(index) { set in
@@ -330,7 +330,7 @@ struct RootView: View {
     }
 
     func addResource() {
-        guard let index, model.sets[index].activeEnd(at: Date()) == nil else {
+        guard let index else {
             resourceKind = nil
             return
         }

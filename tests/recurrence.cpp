@@ -24,9 +24,56 @@ std::vector<Operation> resources(std::vector<Operation> operations) {
     return operations;
 }
 
+void testActiveSetAdditions() {
+    for (bool weekly : {false, true}) {
+        Schedule schedule;
+        schedule.sets["focus"] = {"focus", {"app"}};
+        schedule.sets["overlap"] = {"overlap", {"shared"}};
+        schedule.requests = {{1, "overlap", true, at(19, 9)}, {2, "overlap", false, at(19, 11)}};
+        if (weekly)
+            schedule.weekly = {{"focus", 1, 540, 600}};
+        else {
+            schedule.requests.push_back({3, "focus", true, at(19, 9)});
+            schedule.requests.push_back({4, "focus", false, at(19, 10)});
+        }
+        schedule.nextRequest = 5;
+        schedule.operations = resolveSchedule(schedule, at(19, 8));
+        auto now = at(19, 9, 30);
+        BlockSet added{"focus", {"app", "shared", "website"}};
+        requireValidSetEdit(schedule, added, schedule.weekly, now);
+
+        auto changedWindows = schedule.weekly;
+        changedWindows.push_back({"focus", 2, 540, 600});
+        for (bool changeTimes : {false, true}) {
+            bool rejected = false;
+            try {
+                requireValidSetEdit(schedule, changeTimes ? added : BlockSet{"focus", {"website"}},
+                                    changeTimes ? changedWindows : schedule.weekly, now);
+            } catch (const std::runtime_error&) {
+                rejected = true;
+            }
+            require(rejected, "Active set rejects removal, replacement and schedule changes");
+        }
+        requireValidSetEdit(schedule, {"focus", {"website"}}, changedWindows, at(19, 12));
+        schedule.sets["focus"] = added;
+        schedule.operations = resolveSchedule(schedule, now);
+        auto active = currentOperations(schedule, now);
+        require(active.at("app").block && active.at("website").block && active.at("shared").block,
+                "Active quick and weekly sets immediately include additions");
+        auto ended = currentOperations(schedule, at(19, 10));
+        require(!ended.at("app").block && !ended.at("website").block && ended.at("shared").block,
+                "Additions retain the set deadline and overlapping resources remain blocked");
+        schedule.operations = resolveSchedule(schedule, now + 60);
+        require(currentOperations(schedule, now + 60).at("website").block &&
+                    !currentOperations(schedule, at(19, 10)).at("website").block,
+                "Renewal retains additions without extending their deadline");
+    }
+}
+
 int main() {
     setenv("TZ", "America/New_York", 1);
     tzset();
+    testActiveSetAdditions();
     Schedule s;
     s.sets["focus"] = {"focus", {"app"}};
     s.weekly = {{"focus", 1, 540, 600}};
@@ -91,6 +138,14 @@ int main() {
         now);
     require(batch.requests.empty() && submitted.requests.size() == 2,
             "Batch produces one complete candidate");
+    require(setIntervals(s, "focus", true).empty(), "Weekly blocks have no quick countdown");
+    submitted.weekly = {{"focus", 1, 540, 660}};
+    submitted.operations = resolveSchedule(submitted, now);
+    auto quick = setIntervals(submitted, "focus", true);
+    require(quick.size() == 1 && quick.front() == std::pair(now, now + 3600),
+            "Weekly overlap does not extend the quick countdown");
+    require(setIntervals(submitted, "focus").front().second == at(19, 11),
+            "Combined set activity still includes the weekly block");
     rejected = false;
     try {
         applySubmissions(

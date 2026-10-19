@@ -6,7 +6,8 @@ namespace blocker {
 class MacOSEnvironment final {
   public:
     MacOSEnvironment(fs::path state, fs::path executable);
-    void synchronizeJobs(const std::vector<Operation>&, Timestamp);
+    void synchronizeJobs(const Schedule&, Timestamp);
+    void synchronizeWebsiteJobs(const Schedule&, Timestamp);
     std::unique_ptr<Resource> resource(const ResourceDefinition&);
 
   private:

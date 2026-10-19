@@ -10,6 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace blocker {
@@ -52,7 +53,7 @@ std::string readText(const fs::path& path) {
     return result.str();
 }
 
-void atomicWrite(const fs::path& path, const std::string& text) {
+void atomicWrite(const fs::path& path, const std::string& text, mode_t mode) {
     std::string name = path.string() + ".XXXXXX";
     int fd = mkstemp(name.data());
     require(fd >= 0, "Cannot create temporary file for " + path.string());
@@ -65,6 +66,7 @@ void atomicWrite(const fs::path& path, const std::string& text) {
             require(n > 0, "Write failed");
             offset += static_cast<std::size_t>(n);
         }
+        require(fchmod(fd, mode) == 0, "Cannot set file permissions");
         require(fsync(fd) == 0, "File flush failed");
         require(close(fd) == 0, "File close failed");
         fd = -1;

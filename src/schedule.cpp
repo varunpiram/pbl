@@ -129,10 +129,11 @@ std::map<std::string, Operation> currentOperations(const Schedule& schedule, Tim
 }
 
 std::vector<std::pair<Timestamp, Timestamp>> setIntervals(const Schedule& schedule,
-                                                          const std::string& set) {
+                                                          const std::string& set, bool quickOnly) {
+    const auto operations = quickOnly ? resolveRequests(schedule) : schedule.operations;
     std::vector<std::pair<Timestamp, Timestamp>> result;
     Timestamp start = -1;
-    for (const auto& op : schedule.operations)
+    for (const auto& op : operations)
         if (op.set && op.target == set) {
             if (op.block)
                 start = op.time;
@@ -149,6 +150,22 @@ void requireEditable(const Schedule& schedule, const std::string& set, Timestamp
     resolved.operations = resolveSchedule(schedule, now);
     auto active = currentOperations(resolved, now, true);
     require(!active.contains(set) || !active.at(set).block, "Cannot modify an active set");
+}
+
+void requireValidSetEdit(const Schedule& schedule, const BlockSet& set,
+                         const std::vector<WeeklyWindow>& windows, Timestamp now) {
+    auto previous = schedule.sets.find(set.id);
+    if (previous == schedule.sets.end())
+        return;
+    bool retainsResources = std::ranges::all_of(previous->second.resources, [&](const auto& id) {
+        return std::ranges::find(set.resources, id) != set.resources.end();
+    });
+    auto previousWindows = schedule.weekly;
+    std::erase_if(previousWindows, [&](const WeeklyWindow& window) {
+        return window.set != set.id;
+    });
+    if (!retainsResources || previousWindows != windows)
+        requireEditable(schedule, set.id, now);
 }
 
 Schedule applySubmissions(Schedule schedule, const std::vector<Submission>& submissions,

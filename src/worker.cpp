@@ -2,15 +2,20 @@
 #include "executor.hpp"
 #include "macos_environment.hpp"
 #include "storage.hpp"
+#include "network_watch.hpp"
 #include <iostream>
 #include <mach-o/dyld.h>
 #include <sys/stat.h>
 
 int main(int argc, char** argv) {
     try {
-        bool renew = argc == 2 && std::string(argv[1]) == "renew";
-        blocker::require(renew || (argc == 3 && std::string(argv[1]) == "execute"),
-                         "Expected execute OPERATION_ID or renew");
+        std::string command = argc > 1 ? argv[1] : "";
+        bool renew = argc == 2 && command == "renew";
+        bool refresh = argc == 2 && command == "refresh";
+        bool watch = argc == 2 && command == "watch";
+        blocker::require(renew || refresh || watch ||
+                             (argc == 3 && std::string(argv[1]) == "execute"),
+                         "Expected execute OPERATION_ID, renew, refresh or watch");
         umask(0077);
         std::uint32_t length = 0;
         _NSGetExecutablePath(nullptr, &length);
@@ -20,7 +25,11 @@ int main(int argc, char** argv) {
         const blocker::fs::path state = PBL_STATE;
         blocker::MacOSEnvironment environment(state, executable.c_str());
         blocker::Executor executor(state, environment);
-        if (renew)
+        if (watch)
+            blocker::watchNetwork();
+        else if (refresh)
+            executor.refreshWebsites();
+        else if (renew)
             executor.recover();
         else
             executor.execute(argv[2]);

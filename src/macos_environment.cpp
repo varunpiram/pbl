@@ -66,23 +66,48 @@ std::unique_ptr<Resource> MacOSEnvironment::resource(const ResourceDefinition& d
     return std::make_unique<MacOSWebsite>(definition, state_);
 }
 
-void MacOSEnvironment::synchronizeJobs(const std::vector<Operation>& operations, Timestamp now) {
+static void synchronizeJob(const fs::path& directory, const std::string& label,
+                           const std::string& contents) {
+    auto path = directory / (label + ".plist");
+    bool installed = run({"/bin/launchctl", "print", "system/" + label}).status == 0;
+    bool changed = contents.empty() || !fs::exists(path) || readText(path) != contents;
+    if (installed && changed)
+        checked({"/bin/launchctl", "bootout", "system/" + label});
+    if (contents.empty())
+        fs::remove(path);
+    else {
+        if (changed)
+            atomicWrite(path, contents);
+        if (changed || !installed)
+            checked({"/bin/launchctl", "bootstrap", "system", path.string()});
+    }
+}
+
+static std::string jobPlist(const std::string& label, const fs::path& executable,
+                            const std::vector<std::string>& arguments, const std::string& trigger) {
+    std::ostringstream out;
+    out << "<plist version=\"1.0\"><dict><key>Label</key><string>" << xml(label)
+        << "</string><key>ProgramArguments</key><array><string>" << xml(executable.string())
+        << "</string>";
+    for (const auto& argument : arguments)
+        out << "<string>" << xml(argument) << "</string>";
+    out << "</array><key>RunAtLoad</key><true/>" << trigger << "</dict></plist>\n";
+    return out.str();
+}
+
+void MacOSEnvironment::synchronizeJobs(const Schedule& schedule, Timestamp now) {
     require(unsetenv("TZ") == 0, "Cannot select system timezone");
     tzset();
     fs::path directory = "/Library/LaunchDaemons";
     fs::create_directories(directory);
     const std::string prefix = "local.productivityblocker.";
     std::map<std::string, std::string> expected;
-    expected[prefix + "renew"] = "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict>"
-                                 "<key>Label</key><string>" +
-                                 prefix +
-                                 "renew</string><key>ProgramArguments</key><array><string>" +
-                                 xml(executable_.string()) +
-                                 "</string><string>renew</string></array>"
-                                 "<key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</"
-                                 "integer><key>Minute</key><integer>15</integer></dict>"
-                                 "<key>RunAtLoad</key><true/></dict></plist>\n";
-    for (const auto& operation : operations)
+    expected[prefix + "renew"] =
+        jobPlist(prefix + "renew", executable_, {"renew"},
+                 "<key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer>"
+                 "<key>Minute</key><integer>15</integer></dict>");
+    synchronizeWebsiteJobs(schedule, now);
+    for (const auto& operation : schedule.operations)
         if (!operation.set && operation.time > now) {
             std::time_t timestamp = operation.time;
             std::tm date{};
@@ -91,43 +116,47 @@ void MacOSEnvironment::synchronizeJobs(const std::vector<Operation>& operations,
             require(date.tm_sec == 0, "Future scheduled operations must use whole minutes");
             std::string label = prefix + operation.id();
             std::ostringstream out;
-            out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n"
-                << "<key>Label</key><string>" << xml(label)
-                << "</string>\n<key>ProgramArguments</key><array>";
-            std::vector<std::string> arguments{executable_.string()};
-            arguments.insert(arguments.end(), {"execute", operation.id()});
-            for (const auto& argument : arguments)
-                out << "<string>" << xml(argument) << "</string>";
-            out << "</array>\n<key>StartCalendarInterval</key><dict>";
+            out << "<key>StartCalendarInterval</key><dict>";
             for (auto [key, value] :
                  std::vector<std::pair<std::string, int>>{{"Month", date.tm_mon + 1},
                                                           {"Day", date.tm_mday},
                                                           {"Hour", date.tm_hour},
                                                           {"Minute", date.tm_min}})
                 out << "<key>" << key << "</key><integer>" << value << "</integer>";
-            out << "</dict>\n<key>RunAtLoad</key><true/>\n</dict></plist>\n";
-            expected[label] = out.str();
+            out << "</dict>";
+            expected[label] = jobPlist(label, executable_, {"execute", operation.id()}, out.str());
         }
 
-    for (const auto& [label, contents] : expected) {
-        auto path = directory / (label + ".plist");
-        bool changed = !fs::exists(path) || readText(path) != contents;
-        if (changed) {
-            if (run({"/bin/launchctl", "print", "system/" + label}).status == 0)
-                checked({"/bin/launchctl", "bootout", "system/" + label});
-            atomicWrite(path, contents);
-        }
-        if (run({"/bin/launchctl", "print", "system/" + label}).status != 0)
-            checked({"/bin/launchctl", "bootstrap", "system", path.string()});
-    }
+    for (const auto& [label, contents] : expected)
+        synchronizeJob(directory, label, contents);
     for (const auto& entry : fs::directory_iterator(directory)) {
         auto label = entry.path().stem().string();
         if (entry.path().extension() != ".plist" || !label.starts_with(prefix) ||
-            expected.contains(label))
+            expected.contains(label) || label == prefix + "watch" || label == prefix + "refresh")
             continue;
-        if (run({"/bin/launchctl", "print", "system/" + label}).status == 0)
-            checked({"/bin/launchctl", "bootout", "system/" + label});
-        fs::remove(entry.path());
+        synchronizeJob(directory, label, {});
     }
 }
+
+void MacOSEnvironment::synchronizeWebsiteJobs(const Schedule& schedule, Timestamp now) {
+    const fs::path directory = "/Library/LaunchDaemons";
+    const std::string prefix = "local.productivityblocker.";
+    auto active = currentOperations(schedule, now);
+    bool websites = std::any_of(active.begin(), active.end(), [&](const auto& entry) {
+        return entry.second.block && schedule.resources.at(entry.first).type == "website";
+    });
+    for (const std::string command : {"refresh", "watch"}) {
+        const auto label = prefix + command;
+        std::string contents;
+        if (websites) {
+            std::string trigger = command == "refresh" ? "<key>StartCalendarInterval</key><dict/>"
+                                                       : "<key>KeepAlive</key><true/>";
+            contents = jobPlist(label, executable_, {command},
+                                trigger + "<key>StandardErrorPath</key><string>" +
+                                    xml((state_ / "network.log").string()) + "</string>");
+        }
+        synchronizeJob(directory, label, contents);
+    }
+}
+
 }

@@ -109,18 +109,16 @@ extension RootView {
                             }
                         }.background(surface, in: RoundedRectangle(cornerRadius: 8))
                     }
-                    if !locked {
-                        HStack {
-                            Button { resourceName = ""
-                                resourceKind = .website
-                            } label: {
-                                Label("Website", systemImage: "plus")
-                            }
-                            Button { resourceKind = .app } label: {
-                                Label("App", systemImage: "plus")
-                            }
-                        }.buttonStyle(ActionButtonStyle())
-                    }
+                    HStack {
+                        Button { resourceName = ""
+                            resourceKind = .website
+                        } label: {
+                            Label("Website", systemImage: "plus")
+                        }
+                        Button { resourceKind = .app } label: {
+                            Label("App", systemImage: "plus")
+                        }
+                    }.buttonStyle(ActionButtonStyle())
                 }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 emptyView("Create a set to get started", symbol: "square.stack").frame(

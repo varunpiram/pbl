@@ -1,8 +1,9 @@
 #pragma once
 #include "schedule.hpp"
+#include <sys/types.h>
 
 namespace blocker {
-void atomicWrite(const fs::path&, const std::string&);
+void atomicWrite(const fs::path&, const std::string&, mode_t mode = 0600);
 std::string readText(const fs::path&);
 void require(bool, const std::string&);
 

@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' ui/Info.plist)
 bash scripts/prepare-local.sh
-cmake --build build --target recurrence-test -j4
+cmake --build build --target recurrence-test website-test -j4
 ctest --test-dir build --output-on-failure
 package="pbl-macos-$(uname -m)"
 mkdir -p dist
@@ -46,7 +47,7 @@ for component in components:
 with open(path,'wb') as f: plistlib.dump(components,f)
 PY
 pkgbuild --root "$root" --component-plist "$stage/components.plist" --scripts "$stage/scripts" \
-    --identifier local.pbl.installer --version 0.1.0 --install-location / --ownership recommended "$stage/pbl-component.pkg"
+    --identifier local.pbl.installer --version "$version" --install-location / --ownership recommended "$stage/pbl-component.pkg"
 cat > "$stage/resources/welcome.html" <<'HTML'
 <html><body style="font-family: -apple-system; font-size: 13px">
 <h2>Install pbl</h2>
@@ -63,7 +64,7 @@ cat > "$stage/resources/conclusion.html" <<'HTML'
 <p>Scheduled blocks continue when the app is closed.</p>
 </body></html>
 HTML
-cat > "$stage/Distribution.xml" <<'XML'
+cat > "$stage/Distribution.xml" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
 <title>pbl</title>
@@ -73,7 +74,7 @@ cat > "$stage/Distribution.xml" <<'XML'
 <welcome file="welcome.html"/><conclusion file="conclusion.html"/>
 <choices-outline><line choice="pbl"/></choices-outline>
 <choice id="pbl" visible="false"><pkg-ref id="local.pbl.installer"/></choice>
-<pkg-ref id="local.pbl.installer" version="0.1.0" auth="Root">pbl-component.pkg</pkg-ref>
+<pkg-ref id="local.pbl.installer" version="$version" auth="Root">pbl-component.pkg</pkg-ref>
 </installer-gui-script>
 XML
 productbuild --distribution "$stage/Distribution.xml" --resources "$stage/resources" --package-path "$stage" "dist/$package.pkg"

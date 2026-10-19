@@ -35,6 +35,7 @@ struct Request {
 struct WeeklyWindow {
     std::string set;
     int day, start, end;
+    bool operator==(const WeeklyWindow&) const = default;
 };
 
 struct Operation {
@@ -58,7 +59,10 @@ struct Schedule {
 Timestamp currentTime();
 std::vector<Operation> resolveSchedule(const Schedule&, Timestamp now = currentTime());
 std::map<std::string, Operation> currentOperations(const Schedule&, Timestamp, bool sets = false);
-std::vector<std::pair<Timestamp, Timestamp>> setIntervals(const Schedule&, const std::string&);
+std::vector<std::pair<Timestamp, Timestamp>> setIntervals(const Schedule&, const std::string&,
+                                                          bool quickOnly = false);
 Schedule applySubmissions(Schedule, const std::vector<Submission>&, Timestamp);
 void requireEditable(const Schedule&, const std::string&, Timestamp);
+void requireValidSetEdit(const Schedule&, const BlockSet&, const std::vector<WeeklyWindow>&,
+                         Timestamp);
 }

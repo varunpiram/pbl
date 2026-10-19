@@ -14,7 +14,7 @@ The installer is unsigned and the app is ad-hoc signed, not notarized. macOS may
 
 ## Use
 
-- **Sets:** group websites and apps, and reorder sets.
+- **Sets:** group websites and apps, reorder sets, and add resources during an active block.
 - **Quick Block:** choose a set and a duration, then start the block.
 - **Schedule:** choose weekdays and time ranges that repeat each week.
 

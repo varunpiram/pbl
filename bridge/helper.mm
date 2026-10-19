@@ -32,7 +32,7 @@ static NSData* snapshot(const Schedule& schedule) {
     NSMutableArray* sets = [NSMutableArray new];
     for (const auto& [id, set] : schedule.sets) {
         NSMutableArray *resources = [NSMutableArray new], *windows = [NSMutableArray new],
-                       *intervals = [NSMutableArray new];
+                       *intervals = [NSMutableArray new], *quickIntervals = [NSMutableArray new];
         for (const auto& rid : set.resources) {
             const auto& r = schedule.resources.at(rid);
             [resources addObject:@{
@@ -53,12 +53,16 @@ static NSData* snapshot(const Schedule& schedule) {
         for (auto [start, end] : setIntervals(schedule, id))
             if (end > currentTime())
                 [intervals addObject:@{@"start" : @(start), @"end" : @(end)}];
+        for (auto [start, end] : setIntervals(schedule, id, true))
+            if (end > currentTime())
+                [quickIntervals addObject:@{@"start" : @(start), @"end" : @(end)}];
         [sets addObject:@{
             @"id" : string(id),
             @"name" : @"New set",
             @"resources" : resources,
             @"windows" : windows,
-            @"intervals" : intervals
+            @"intervals" : intervals,
+            @"quickIntervals" : quickIntervals
         }];
     }
     return [NSJSONSerialization dataWithJSONObject:sets options:0 error:nil];

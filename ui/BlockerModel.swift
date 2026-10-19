@@ -27,8 +27,9 @@ struct FocusSet: Identifiable, Codable {
     var resources: [BlockResource] = []
     var windows: [WeeklyWindow] = []
     var intervals: [BlockInterval] = []
-    func activeInterval(at now: Date) -> DateInterval? {
-        intervals
+    var quickIntervals: [BlockInterval] = []
+    func activeInterval(at now: Date, quickOnly: Bool = false) -> DateInterval? {
+        (quickOnly ? quickIntervals : intervals)
             .first { $0.start <= now.timeIntervalSince1970 && now.timeIntervalSince1970 < $0.end }
             .map { DateInterval(
                 start: Date(timeIntervalSince1970: $0.start),

@@ -12,6 +12,7 @@ class Executor {
     void submit(const std::vector<Submission>&);
     void execute(const std::string& operation);
     void recover();
+    void refreshWebsites();
     Schedule inspect();
 
   private:
