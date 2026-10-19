@@ -14,6 +14,7 @@ struct RootView: View {
     @State var selectedDay = 1
     @State var expanded: String?
     @State var scheduleToClear: String?
+    @State var setToDelete: String?
     @State var now = Date()
     @Environment(\.colorScheme) var colorScheme
     let heartbeat = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -36,11 +37,6 @@ struct RootView: View {
 
     var background: Color {
         AppPalette.background(colorScheme)
-    }
-
-    var zone: String {
-        TimeZone.autoupdatingCurrent
-            .identifier + " · " + (TimeZone.autoupdatingCurrent.abbreviation() ?? "")
     }
 
     var body: some View {
@@ -143,6 +139,28 @@ struct RootView: View {
                 "Remove all weekly time ranges for \(model.sets.first(where: { $0.id == scheduleToClear })?.name ?? "this set")?"
             )
         }
+        .confirmationDialog(
+            "Delete set?",
+            isPresented: Binding(
+                get: { setToDelete != nil },
+                set: { if !$0 {
+                    setToDelete = nil
+                } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete set", role: .destructive) {
+                if let index = model.sets.firstIndex(where: { $0.id == setToDelete }) {
+                    deleteSet(index)
+                }
+                setToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { setToDelete = nil }
+        } message: {
+            Text(
+                "Delete \(model.sets.first(where: { $0.id == setToDelete })?.name ?? "this set") and its weekly schedule?"
+            )
+        }
         .sheet(item: $resourceKind) { kind in
             if kind == .app {
                 AppPicker { apps in
@@ -218,37 +236,26 @@ struct RootView: View {
                     }.padding(.horizontal, 10)
                 }.frame(height: min(160, CGFloat(active.count * 31 - 9)))
             }
-            VStack(alignment: .leading, spacing: 10) {
-                Text(zone)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .padding(
-                        .horizontal,
-                        8
-                    )
-                HStack(spacing: 3) {
-                    ForEach(["Light", "Dark", "System"], id: \.self) { mode in
-                        Button { appearance = mode } label: {
-                            Image(
-                                systemName: mode == "Light" ? "sun.max" : mode == "Dark" ? "moon" :
-                                    "desktopcomputer"
-                            )
-                            .font(.system(size: 13))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 7)
-                            .background(
-                                appearance == mode ? accent.opacity(0.1) : .clear,
-                                in: RoundedRectangle(cornerRadius: 4)
-                            )
-                        }
-                        .buttonStyle(HoverButtonStyle())
-                        .foregroundStyle(appearance == mode ? .primary : .secondary)
-                        .accessibilityLabel(mode)
-                        .help(mode)
-                        .accessibilityAddTraits(appearance == mode ? .isSelected : [])
+            HStack(spacing: 3) {
+                ForEach(["Light", "Dark", "System"], id: \.self) { mode in
+                    Button { appearance = mode } label: {
+                        Image(
+                            systemName: mode == "Light" ? "sun.max" : mode == "Dark" ? "moon" :
+                                "desktopcomputer"
+                        )
+                        .font(.system(size: 13))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(
+                            appearance == mode ? accent.opacity(0.1) : .clear,
+                            in: RoundedRectangle(cornerRadius: 4)
+                        )
                     }
+                    .buttonStyle(HoverButtonStyle())
+                    .foregroundStyle(appearance == mode ? .primary : .secondary)
+                    .accessibilityLabel(mode)
+                    .help(mode)
+                    .accessibilityAddTraits(appearance == mode ? .isSelected : [])
                 }
             }
         }

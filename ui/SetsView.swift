@@ -53,7 +53,8 @@ extension RootView {
                             .textFieldStyle(.plain)
                             .disabled(locked)
                         if !locked {
-                            Button(role: .destructive) { deleteSet(index) } label: {
+                            Button(role: .destructive) { setToDelete = model.sets[index].id
+                            } label: {
                                 Image(systemName: "trash")
                             }
                             .buttonStyle(HoverButtonStyle())
