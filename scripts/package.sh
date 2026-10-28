@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' ui/Info.plist)
 bash scripts/prepare-local.sh
-cmake --build build --target recurrence-test website-test -j4
+cmake --build build --target recurrence-test website-test app-test -j4
 ctest --test-dir build --output-on-failure
 package="pbl-macos-$(uname -m)"
 mkdir -p dist

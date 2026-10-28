@@ -2,6 +2,7 @@
 #include "executor.hpp"
 #include "storage.hpp"
 #include "macos_environment.hpp"
+#include "macos_app.hpp"
 #include <algorithm>
 #include <cstdlib>
 #include <ctime>
@@ -58,11 +59,16 @@ void Executor::commit(Schedule& schedule) {
 static std::string registerResource(Schedule& schedule, ResourceDefinition definition) {
     validateId(definition.id);
     definition = validateResource(std::move(definition));
-    for (const auto& [id, r] : schedule.resources)
-        if (r.type == definition.type &&
-            (r.target == definition.target ||
-             (r.type == "app" && r.device == definition.device && r.inode == definition.inode)))
+    for (auto& [id, r] : schedule.resources)
+        if (r.type == definition.type && r.target == definition.target &&
+            r.user == definition.user) {
+            if (r.type == "app") {
+                appRequirement(r.target, r.requirement);
+                if (r.requirement.empty())
+                    r.requirement = definition.requirement;
+            }
             return id;
+        }
     require(!schedule.resources.contains(definition.id), "Resource ID already exists");
     auto id = definition.id;
     schedule.resources.emplace(id, std::move(definition));

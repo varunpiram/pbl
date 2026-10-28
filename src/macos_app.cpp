@@ -1,5 +1,6 @@
 #include "macos_app.hpp"
 #include "storage.hpp"
+#include <Security/Security.h>
 #include <cerrno>
 #include <csignal>
 #include <cstring>
@@ -14,6 +15,15 @@
 
 namespace blocker {
 namespace {
+template <class T> struct CF {
+    T value = nullptr;
+
+    ~CF() {
+        if (value)
+            CFRelease(value);
+    }
+};
+
 struct Descriptor {
     int fd;
 
@@ -42,6 +52,7 @@ struct OriginalMetadata {
     std::uint64_t device, inode;
     unsigned uid, gid, mode, flags;
     std::string acl;
+    timespec born{};
 };
 
 OriginalMetadata capture(int fd) {
@@ -56,7 +67,7 @@ OriginalMetadata capture(int fd) {
     std::string saved(text);
     acl_free(text);
     return {std::uint64_t(st.st_dev),     st.st_ino,   st.st_uid, st.st_gid,
-            unsigned(st.st_mode & 07777), st.st_flags, saved};
+            unsigned(st.st_mode & 07777), st.st_flags, saved,     st.st_birthtimespec};
 }
 
 OriginalMetadata readMetadata(const fs::path& path) {
@@ -65,23 +76,57 @@ OriginalMetadata readMetadata(const fs::path& path) {
     std::istringstream in(readText(path));
     require(bool(in >> tag >> m.device >> m.inode >> m.uid >> m.gid >> m.mode >> m.flags >>
                  std::quoted(m.acl)) &&
-                tag == "METADATA1",
+                (tag == "METADATA1" || tag == "METADATA2"),
             "Invalid restoration record");
+    if (tag == "METADATA2")
+        require(bool(in >> m.born.tv_sec >> m.born.tv_nsec), "Invalid installation birth time");
     return m;
 }
 
 void saveMetadata(const fs::path& path, const OriginalMetadata& m) {
     std::ostringstream out;
-    out << "METADATA1 " << m.device << ' ' << m.inode << ' ' << m.uid << ' ' << m.gid << ' '
-        << m.mode << ' ' << m.flags << ' ' << std::quoted(m.acl) << '\n';
+    out << "METADATA2 " << m.device << ' ' << m.inode << ' ' << m.uid << ' ' << m.gid << ' '
+        << m.mode << ' ' << m.flags << ' ' << std::quoted(m.acl) << ' ' << m.born.tv_sec << ' '
+        << m.born.tv_nsec << '\n';
     atomicWrite(path, out.str());
 }
 
-void verifyIdentity(int fd, std::uint64_t device, std::uint64_t inode) {
+bool matches(const struct stat& st, const OriginalMetadata& original) {
+    return S_ISDIR(st.st_mode) && std::uint64_t(st.st_dev) == original.device &&
+           st.st_ino == original.inode &&
+           (!original.born.tv_sec || (st.st_birthtimespec.tv_sec == original.born.tv_sec &&
+                                      st.st_birthtimespec.tv_nsec == original.born.tv_nsec));
+}
+
+void verifyIdentity(int fd, const OriginalMetadata& original) {
     struct stat st{};
-    require(fstat(fd, &st) == 0 && S_ISDIR(st.st_mode) && std::uint64_t(st.st_dev) == device &&
-                st.st_ino == inode,
+    require(fstat(fd, &st) == 0 && matches(st, original),
             "App installation changed; refusing to modify a replacement");
+}
+
+std::vector<fs::path> journals(const fs::path& base) {
+    std::vector<fs::path> result;
+    const auto prefix = base.stem().string() + ".";
+    for (const auto& entry : fs::directory_iterator(base.parent_path()))
+        if (entry.path().filename().string().starts_with(prefix) &&
+            entry.path().extension() == ".metadata")
+            result.push_back(entry.path());
+    return result;
+}
+
+fs::path installationJournal(int fd, const fs::path& base) {
+    struct stat st{};
+    require(fstat(fd, &st) == 0, "Cannot stat app");
+    if (fs::exists(base) && matches(st, readMetadata(base)))
+        return base;
+    return base.parent_path() / (base.stem().string() + "." + std::to_string(st.st_ino) + "." +
+                                 std::to_string(st.st_birthtimespec.tv_sec) + "." +
+                                 std::to_string(st.st_birthtimespec.tv_nsec) + ".metadata");
+}
+
+void checkPending(const fs::path& base, const fs::path& current = {}) {
+    for (const auto& path : journals(base))
+        require(path == current, "Previous installation needs restoration: " + path.string());
 }
 
 void stopInstances(const ResourceDefinition& definition) {
@@ -110,6 +155,49 @@ void stopInstances(const ResourceDefinition& definition) {
 }
 }
 
+std::string appRequirement(const fs::path& path, const std::string& expected) {
+    CF<CFURLRef> url{CFURLCreateFromFileSystemRepresentation(
+        nullptr, reinterpret_cast<const UInt8*>(path.c_str()), path.string().size(), true)};
+    CF<SecStaticCodeRef> code;
+    require(url.value && SecStaticCodeCreateWithPath(url.value, 0, &code.value) == errSecSuccess,
+            "Cannot inspect app signature");
+    CF<SecRequirementRef> requirement;
+    if (!expected.empty()) {
+        CF<CFStringRef> text{
+            CFStringCreateWithCString(nullptr, expected.c_str(), kCFStringEncodingUTF8)};
+        require(text.value && SecRequirementCreateWithString(text.value, 0, &requirement.value) ==
+                                  errSecSuccess,
+                "Invalid saved app signing requirement");
+    } else {
+        CF<CFDictionaryRef> info;
+        auto status =
+            SecCodeCopySigningInformation(code.value, kSecCSSigningInformation, &info.value);
+        if (status == errSecCSUnsigned)
+            return {};
+        require(status == errSecSuccess, "Cannot read app signing identity");
+        auto number = static_cast<CFNumberRef>(CFDictionaryGetValue(info.value, kSecCodeInfoFlags));
+        unsigned flags = 0;
+        require(number && CFNumberGetValue(number, kCFNumberIntType, &flags),
+                "Invalid signature flags");
+        if (flags & kSecCodeSignatureAdhoc)
+            return {};
+        require(SecCodeCopyDesignatedRequirement(code.value, 0, &requirement.value) ==
+                    errSecSuccess,
+                "Cannot capture app signing identity");
+    }
+    require(SecStaticCodeCheckValidity(code.value, kSecCSCheckAllArchitectures,
+                                       requirement.value) == errSecSuccess,
+            "App signing identity changed or signature is invalid");
+    CF<CFStringRef> text;
+    require(SecRequirementCopyString(requirement.value, 0, &text.value) == errSecSuccess,
+            "Cannot encode app signing identity");
+    CF<CFDataRef> data{
+        CFStringCreateExternalRepresentation(nullptr, text.value, kCFStringEncodingUTF8, 0)};
+    require(data.value, "Cannot encode app signing identity");
+    return {reinterpret_cast<const char*>(CFDataGetBytePtr(data.value)),
+            static_cast<std::size_t>(CFDataGetLength(data.value))};
+}
+
 MacOSApp::MacOSApp(ResourceDefinition definition, fs::path state)
     : definition_(std::move(definition)), journal_(state / (definition_.id + ".metadata")) {
 }
@@ -118,15 +206,20 @@ void MacOSApp::block() {
     require(geteuid() == 0, "App protection requires root");
     Descriptor fd(
         open(definition_.target.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
-    verifyIdentity(fd.fd, definition_.device, definition_.inode);
-    if (!fs::exists(journal_)) {
+    if (!definition_.requirement.empty())
+        appRequirement(definition_.target, definition_.requirement);
+    auto journal = installationJournal(fd.fd, journal_);
+    if (!fs::exists(journal)) {
         auto original = capture(fd.fd);
         require(!(original.flags & (UF_IMMUTABLE | SF_IMMUTABLE | UF_APPEND | SF_APPEND)),
                 "App already has restrictive flags; refusing to modify it");
-        saveMetadata(journal_, original);
+        saveMetadata(journal, original);
     }
-    auto original = readMetadata(journal_);
-    verifyIdentity(fd.fd, original.device, original.inode);
+    auto original = readMetadata(journal);
+    verifyIdentity(fd.fd, original);
+    struct stat path{};
+    require(lstat(definition_.target.c_str(), &path) == 0 && matches(path, original),
+            "App moved during blocking; retry");
     require(fchflags(fd.fd, original.flags) == 0, "Cannot clear our immutable flag");
     ACL acl(acl_from_text(original.acl.c_str()));
     acl_entry_t entry;
@@ -143,15 +236,22 @@ void MacOSApp::block() {
     require(fchown(fd.fd, 0, original.gid) == 0, "Cannot protect app ownership");
     require(fchflags(fd.fd, original.flags | UF_IMMUTABLE) == 0, "Cannot protect app flags");
     stopInstances(definition_);
+    require(lstat(definition_.target.c_str(), &path) == 0 && matches(path, original),
+            "App moved during blocking; restoration record retained");
+    checkPending(journal_, journal);
 }
 
 void MacOSApp::unblock() {
-    if (!fs::exists(journal_))
+    if (journals(journal_).empty())
         return;
+    require(geteuid() == 0, "App restoration requires root");
     Descriptor fd(
         open(definition_.target.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
-    auto original = readMetadata(journal_);
-    verifyIdentity(fd.fd, original.device, original.inode);
+    auto journal = installationJournal(fd.fd, journal_);
+    require(fs::exists(journal),
+            "Previous installation needs restoration; replacement left untouched");
+    auto original = readMetadata(journal);
+    verifyIdentity(fd.fd, original);
     require(fchflags(fd.fd, original.flags & ~UF_IMMUTABLE) == 0, "Cannot remove app protection");
     require(fchown(fd.fd, original.uid, original.gid) == 0, "Cannot restore ownership");
     require(fchmod(fd.fd, original.mode) == 0, "Cannot restore mode");
@@ -159,6 +259,7 @@ void MacOSApp::unblock() {
     require(acl_set_fd_np(fd.fd, acl.value, ACL_TYPE_EXTENDED) == 0, "Cannot restore ACL");
     require(fchflags(fd.fd, original.flags) == 0, "Cannot restore flags");
 
-    require(unlink(journal_.c_str()) == 0, "Cannot remove completed restoration record");
+    require(unlink(journal.c_str()) == 0, "Cannot remove completed restoration record");
+    checkPending(journal_);
 }
 }

@@ -24,8 +24,7 @@ ResourceDefinition validateResource(ResourceDefinition definition) {
                 "Not an app directory");
         require(definition.user > 0, "Select a non-root user UID");
         definition.target = path.string();
-        definition.device = metadata.st_dev;
-        definition.inode = metadata.st_ino;
+        definition.requirement = appRequirement(path, definition.requirement);
     } else {
         auto& hostname = definition.target;
         std::transform(hostname.begin(), hostname.end(), hostname.begin(), [](unsigned char c) {

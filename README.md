@@ -39,9 +39,20 @@ sudo bash scripts/install-local.sh
 
 Reinstall after rebuilding the app.
 
+App selections keep their location and user across updates. New selections also retain the signing
+requirement of certificate-signed apps; unsigned and ad-hoc apps use location policy. Existing
+selections retain location policy until saved again. Restoration records belong to individual
+installations and are never applied to a replacement. If an original installation cannot be restored,
+pbl retains its record and reports the pending restoration.
+
+The saved state upgrades to format 2; older pbl releases cannot read the upgraded state.
+
 To run tests:
 
 ```sh
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+The two app tests use disposable bundles and real filesystem permissions. Run them with
+`sudo ctest --test-dir build -R '^app-' --output-on-failure`; they skip without sudo.

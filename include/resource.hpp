@@ -10,7 +10,7 @@ namespace fs = std::filesystem;
 struct ResourceDefinition {
     std::string id, type, target;
     unsigned user = 0;
-    std::uint64_t device = 0, inode = 0;
+    std::string requirement = {};
 };
 
 class Resource {

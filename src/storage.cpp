@@ -102,15 +102,20 @@ Schedule loadSchedule(const fs::path& state) {
     std::string magic;
     int version, legacyMode;
     require(bool(input >> magic >> version >> legacyMode >> schedule.nextRequest) &&
-                magic == "BLOCKER" && version == 1 && legacyMode == 0 && schedule.nextRequest > 0,
+                magic == "BLOCKER" && (version == 1 || version == 2) && legacyMode == 0 &&
+                schedule.nextRequest > 0,
             "Invalid live schedule header");
     std::string tag;
     while (input >> tag) {
         if (tag == "resource") {
             ResourceDefinition r;
-            require(bool(input >> std::quoted(r.id) >> r.type >> std::quoted(r.target) >> r.user >>
-                         r.device >> r.inode),
+            require(bool(input >> std::quoted(r.id) >> r.type >> std::quoted(r.target) >> r.user),
                     "Malformed resource");
+            if (version == 1) {
+                std::uint64_t device, inode;
+                require(bool(input >> device >> inode), "Malformed legacy installation");
+            } else
+                require(bool(input >> std::quoted(r.requirement)), "Malformed app requirement");
             validateId(r.id);
             require(r.type == "app" || r.type == "website", "Unknown resource type");
             require(schedule.resources.emplace(r.id, r).second, "Duplicate resource");
@@ -172,10 +177,10 @@ Schedule loadSchedule(const fs::path& state) {
 
 void saveSchedule(const fs::path& state, const Schedule& schedule) {
     std::ostringstream out;
-    out << "BLOCKER 1 0 " << schedule.nextRequest << '\n';
+    out << "BLOCKER 2 0 " << schedule.nextRequest << '\n';
     for (const auto& [id, r] : schedule.resources)
         out << "resource " << std::quoted(id) << ' ' << r.type << ' ' << std::quoted(r.target)
-            << ' ' << r.user << ' ' << r.device << ' ' << r.inode << '\n';
+            << ' ' << r.user << ' ' << std::quoted(r.requirement) << '\n';
     for (const auto& [id, set] : schedule.sets) {
         out << "set " << std::quoted(id) << ' ' << set.resources.size();
         for (const auto& resource : set.resources)
