@@ -10,6 +10,12 @@ client_hash=$(codesign -d --verbose=4 build/pbl.app 2>&1 | sed -n 's/^CDHash=//p
 cmake -S . -B build "-DPBL_CLIENT_REQUIREMENT=cdhash H\"$client_hash\""
 cmake --build build --target blocker-helper -j4
 codesign --force --sign - --options runtime build/blocker-helper build/blocker-worker
-codesign -d --verbose=4 build/blocker-helper 2>&1 | sed -n 's/^CDHash=\(.*\)/cdhash H"\1"/p' > build/helper.requirement
+backend="build/pbl Blocking Service.app"
+mkdir -p "$backend/Contents/MacOS"
+cp assets/BackendInfo.plist "$backend/Contents/Info.plist"
+cp build/blocker-helper "$backend/Contents/MacOS/local.pbl.helper"
+cp build/blocker-worker "$backend/Contents/MacOS/local.productivityblocker.worker"
+codesign --force --sign - --options runtime "$backend"
+codesign -d --verbose=4 "$backend" 2>&1 | sed -n 's/^CDHash=\(.*\)/cdhash H"\1"/p' > build/helper.requirement
 cp include/config.h build/config.h
 printf 'Prepared. Install with: sudo bash "%s/scripts/install-local.sh"\n' "$PWD"

@@ -13,8 +13,7 @@ root="$stage/root"
 mkdir -p "$root/Applications" "$root/Library/PrivilegedHelperTools" "$stage/scripts" "$stage/resources"
 ditto build/pbl.app "$root/Applications/pbl.app"
 setting() { sed -n "s/^#define $1 \"\(.*\)\"/\1/p" include/config.h; }
-cp build/blocker-helper "$root$(setting PBL_HELPER)"
-cp build/blocker-worker "$root$(setting PBL_WORKER)"
+ditto 'build/pbl Blocking Service.app' "$root$(setting PBL_BACKEND_BUNDLE)"
 cp build/helper.requirement "$root$(setting PBL_HELPER_REQUIREMENT_FILE)"
 cp include/config.h scripts/configure-install.sh "$stage/scripts/"
 cat > "$stage/scripts/preinstall" <<'PRE'
@@ -55,13 +54,15 @@ cat > "$stage/resources/welcome.html" <<'HTML'
 <p>This installs pbl in Applications, its privileged helper and scheduling worker,
 and the firewall configuration needed for website blocks. Existing schedules are retained.</p>
 <p>macOS will ask for administrator authorization. No Terminal commands are needed.</p>
+<p>On first launch, pbl guides you through granting Full Disk Access to pbl Blocking Service for app blocking.
+macOS also permits this service to access protected data such as Mail and Messages.</p>
 <p>Requires Apple Silicon and macOS 14 or later.</p>
 </body></html>
 HTML
 cat > "$stage/resources/conclusion.html" <<'HTML'
 <html><body style="font-family: -apple-system; font-size: 13px">
-<h2>pbl is installed</h2><p>Open pbl from Applications.</p>
-<p>Scheduled blocks continue when the app is closed.</p>
+<h2>Finish setting up pbl</h2><p>Open pbl from Applications and follow its Full Disk Access instructions.</p>
+<p>Approve pbl Blocking Service to enable app blocking. Scheduled blocks then continue when pbl is closed.</p>
 </body></html>
 HTML
 cat > "$stage/Distribution.xml" <<XML

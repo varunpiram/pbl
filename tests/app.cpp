@@ -154,7 +154,7 @@ void replacement() {
     require(metadata(f.app) == unrelated, "Legacy location policy accepts a fresh installation");
 }
 
-void restoration() {
+void restoration(const fs::path& executable) {
     Fixture f;
     f.create();
     require(f.executable(), "Baseline fixture executes");
@@ -204,6 +204,39 @@ void restoration() {
     require(metadata(f.app) == original && f.executable() &&
                 !fs::exists(f.root / "fixture.metadata"),
             "Verified original installation recovers using the legacy journal");
+
+    // Reproduce a journal left behind when macOS denied the first block mutation.
+    app.block();
+    fs::path journal;
+    for (const auto& entry : fs::directory_iterator(f.root))
+        if (entry.path().extension() == ".metadata")
+            journal = entry.path();
+    require(!journal.empty(), "Block saved a restoration journal");
+    auto saved = readText(journal);
+    app.unblock();
+    auto readOnlyUnblock = [&] {
+        return run({"/usr/bin/sandbox-exec", "-p",
+                    "(version 1)(allow default)(deny file-write* (subpath \"" +
+                        fs::canonical(f.app).string() + "\"))",
+                    executable.string(), "unblock-readonly", f.root.string()});
+    };
+    atomicWrite(journal, saved);
+    auto completed = readOnlyUnblock();
+    require(completed.status == 0, completed.output);
+    require(!fs::exists(journal) && metadata(f.app) == original && f.executable(),
+            "Already restored app completes without any permission to mutate the bundle");
+
+    atomicWrite(journal, saved);
+    require(chmod(f.app.c_str(), 0700) == 0, "Simulate partially changed app metadata");
+    auto partial = metadata(f.app);
+    auto denied = readOnlyUnblock();
+    require(denied.status != 0 &&
+                denied.output.find("Cannot remove app protection: Operation "
+                                   "not permitted") != std::string::npos &&
+                fs::exists(journal) && metadata(f.app) == partial,
+            "Denied partial restoration reports the OS error and preserves its journal");
+    require(chmod(f.app.c_str(), 0755) == 0, "Reset fixture mode");
+    app.unblock();
 }
 
 int main(int argc, char** argv) {
@@ -212,12 +245,21 @@ int main(int argc, char** argv) {
         return 77;
     }
     try {
+        if (argc == 3 && std::string(argv[1]) == "unblock-readonly") {
+            fs::path root = argv[2], path = root / "Fixture.app";
+            struct stat st{};
+            require(stat(path.c_str(), &st) == 0, "Read sandboxed fixture metadata");
+            require(chmod(path.c_str(), st.st_mode & 07777) == -1 && errno == EPERM,
+                    "Sandbox must reject even a no-op bundle metadata write");
+            MacOSApp({"fixture", "app", path.string(), unsigned(st.st_uid)}, root).unblock();
+            return 0;
+        }
         require(argc == 2, "Choose replacement or restoration");
         if (std::string(argv[1]) == "replacement")
             replacement();
         else {
             require(std::string(argv[1]) == "restoration", "Unknown test");
-            restoration();
+            restoration(fs::canonical(argv[0]));
         }
         std::cout << "PASS " << argv[1] << '\n';
     } catch (const std::exception& error) {

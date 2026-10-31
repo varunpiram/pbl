@@ -104,6 +104,22 @@ void verifyIdentity(int fd, const OriginalMetadata& original) {
             "App installation changed; refusing to modify a replacement");
 }
 
+bool sameMetadata(const OriginalMetadata& a, const OriginalMetadata& b) {
+    return a.uid == b.uid && a.gid == b.gid && a.mode == b.mode && a.flags == b.flags &&
+           a.acl == b.acl;
+}
+
+void requireAppChange(int result, const char* message) {
+    if (result == 0)
+        return;
+    const int error = errno;
+    throw std::runtime_error(
+        std::string(message) + ": " + strerror(error) +
+        (error == EPERM ? "; macOS may require Full Disk Access approval "
+                          "for pbl Blocking Service in System Settings > Privacy & Security"
+                        : ""));
+}
+
 std::vector<fs::path> journals(const fs::path& base) {
     std::vector<fs::path> result;
     const auto prefix = base.stem().string() + ".";
@@ -220,7 +236,7 @@ void MacOSApp::block() {
     struct stat path{};
     require(lstat(definition_.target.c_str(), &path) == 0 && matches(path, original),
             "App moved during blocking; retry");
-    require(fchflags(fd.fd, original.flags) == 0, "Cannot clear our immutable flag");
+    requireAppChange(fchflags(fd.fd, original.flags), "Cannot clear our immutable flag");
     ACL acl(acl_from_text(original.acl.c_str()));
     acl_entry_t entry;
     acl_permset_t permissions;
@@ -232,9 +248,9 @@ void MacOSApp::block() {
                 acl_clear_perms(permissions) == 0 && acl_add_perm(permissions, ACL_SEARCH) == 0 &&
                 acl_set_permset(entry, permissions) == 0,
             "Cannot construct app ACL");
-    require(acl_set_fd_np(fd.fd, acl.value, ACL_TYPE_EXTENDED) == 0, "Cannot install app ACL");
-    require(fchown(fd.fd, 0, original.gid) == 0, "Cannot protect app ownership");
-    require(fchflags(fd.fd, original.flags | UF_IMMUTABLE) == 0, "Cannot protect app flags");
+    requireAppChange(acl_set_fd_np(fd.fd, acl.value, ACL_TYPE_EXTENDED), "Cannot install app ACL");
+    requireAppChange(fchown(fd.fd, 0, original.gid), "Cannot protect app ownership");
+    requireAppChange(fchflags(fd.fd, original.flags | UF_IMMUTABLE), "Cannot protect app flags");
     stopInstances(definition_);
     require(lstat(definition_.target.c_str(), &path) == 0 && matches(path, original),
             "App moved during blocking; restoration record retained");
@@ -252,12 +268,16 @@ void MacOSApp::unblock() {
             "Previous installation needs restoration; replacement left untouched");
     auto original = readMetadata(journal);
     verifyIdentity(fd.fd, original);
-    require(fchflags(fd.fd, original.flags & ~UF_IMMUTABLE) == 0, "Cannot remove app protection");
-    require(fchown(fd.fd, original.uid, original.gid) == 0, "Cannot restore ownership");
-    require(fchmod(fd.fd, original.mode) == 0, "Cannot restore mode");
-    ACL acl(acl_from_text(original.acl.c_str()));
-    require(acl_set_fd_np(fd.fd, acl.value, ACL_TYPE_EXTENDED) == 0, "Cannot restore ACL");
-    require(fchflags(fd.fd, original.flags) == 0, "Cannot restore flags");
+    // A failed block may have saved a journal before macOS denied its first mutation.
+    if (!sameMetadata(capture(fd.fd), original)) {
+        requireAppChange(fchflags(fd.fd, original.flags & ~UF_IMMUTABLE),
+                         "Cannot remove app protection");
+        requireAppChange(fchown(fd.fd, original.uid, original.gid), "Cannot restore ownership");
+        requireAppChange(fchmod(fd.fd, original.mode), "Cannot restore mode");
+        ACL acl(acl_from_text(original.acl.c_str()));
+        requireAppChange(acl_set_fd_np(fd.fd, acl.value, ACL_TYPE_EXTENDED), "Cannot restore ACL");
+        requireAppChange(fchflags(fd.fd, original.flags), "Cannot restore flags");
+    }
 
     require(unlink(journal.c_str()) == 0, "Cannot remove completed restoration record");
     checkPending(journal_);

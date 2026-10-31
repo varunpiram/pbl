@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct BlockResource: Identifiable, Codable, Equatable {
     var id = UUID().uuidString
@@ -55,6 +56,23 @@ struct FocusSet: Identifiable, Codable {
     @Published var error: String?
     @Published var busy = false
     private var client: BackendClient?
+    static let blockingAccessInstructions = "Allow pbl Blocking Service in System Settings → Privacy & Security → Full Disk Access. Drag the selected service from Finder into the list and enable it. macOS also grants access to protected data such as Mail and Messages. Return to pbl and retry. You may need to approve access again after an update."
+    func promptForBlockingAccess() {
+        guard let build = try? String(contentsOfFile: PBL_HELPER_REQUIREMENT_FILE, encoding: .utf8),
+              UserDefaults.standard.string(forKey: "permissionInstructionsShownFor") != build
+        else {
+            return
+        }
+        UserDefaults.standard.set(build, forKey: "permissionInstructionsShownFor")
+        error = Self.blockingAccessInstructions
+    }
+
+    func openBlockingAccess() {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: PBL_BACKEND_BUNDLE)])
+        NSWorkspace.shared.open(URL(string:
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+    }
+
     func refresh(reconcile: Bool = true) {
         send(["command": reconcile ? "renew" : "read"])
     }

@@ -23,4 +23,4 @@ if ! grep -Fq 'anchor "productivity-blocker/*"' /etc/pf.conf; then
     printf '\nanchor "productivity-blocker/*"\n' >> /etc/pf.conf
 fi
 launchctl bootstrap system "$job"
-"$worker" renew
+"$worker" renew || printf 'Open pbl to finish setup and resolve the blocking errors above.\n' >&2

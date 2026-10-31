@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>local.pbl.backend</string>
+<key>CFBundleExecutable</key><string>local.pbl.helper</string>
+<key>CFBundleName</key><string>pbl Blocking Service</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>8</string>
+<key>LSUIElement</key><true/>
+<key>NSAppBundlesUsageDescription</key><string>pbl changes selected apps' permissions to block them during focus sessions and restore access afterward.</string>
+</dict></plist>

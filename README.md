@@ -10,6 +10,8 @@ Requires Apple Silicon and macOS 14 or later.
 
 Download and open [pbl-macos-arm64.pkg](https://github.com/varunpiram/pbl/releases/latest/download/pbl-macos-arm64.pkg), follow the macOS Installer prompts, then open pbl from Applications. Quit the app before updating. Existing sets and schedules are retained.
 
+On first launch, pbl opens a setup prompt for **pbl Blocking Service**. Follow it to add the service to **Privacy & Security → Full Disk Access**, enable access, then return to pbl and retry. The setup button opens Settings and selects the service in Finder. This permission enables background app blocking; macOS also grants access to protected data such as Mail and Messages. Your approval is required, and updates may require approval again.
+
 The installer is unsigned and the app is ad-hoc signed, not notarized. macOS may require approval in System Settings > Privacy & Security.
 
 ## Use

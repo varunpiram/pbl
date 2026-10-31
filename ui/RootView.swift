@@ -74,6 +74,7 @@ struct RootView: View {
         ]) == .darkAqua }
         .tint(accent)
         .onAppear { model.refresh()
+            model.promptForBlockingAccess()
             expanded = selected
         }
         .onReceive(model.$sets) { _ in now = Date() }
@@ -89,8 +90,15 @@ struct RootView: View {
                 model.error = nil
             } })
         ) {
+            if model.error?.contains("Full Disk Access") == true {
+                Button("Open Full Disk Access") { model.openBlockingAccess() }
+                Button("Retry") { model.error = nil
+                    model.refresh()
+                }
+            }
             Button("OK") { model.error = nil }
-        } message: { Text(model.error ?? "") }
+        } message: { Text(model.error?.contains("Full Disk Access") == true
+                ? BlockerModel.blockingAccessInstructions : model.error ?? "") }
         .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
             now = Date()
             model.refresh()
